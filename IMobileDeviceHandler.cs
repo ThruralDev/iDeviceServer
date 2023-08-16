@@ -10,6 +10,10 @@ using System.Collections.ObjectModel;
 
 class IMobileDeviceHandler : MobileDeviceHandler
 {
+    private iDeviceEventCallBack callback;
+    private iDeviceApi iDeviceApi;
+    private String uuid;
+    private iDeviceConnectionHandle currentConnectionHandle;
 
     public IMobileDeviceHandler()
     {
@@ -51,4 +55,63 @@ class IMobileDeviceHandler : MobileDeviceHandler
                 lockdownHandle.Dispose();
             }
         }
+
+    public void beginListening()
+    {
+        callback = createEventCallback();
+        iDeviceError iDeviceError = iDeviceApi.idevice_event_subscribe(callback, new IntPtr());
+    }
+
+    private iDeviceEventCallBack createEventCallback()
+    {
+        return (ref iDeviceEvent devEvent, IntPtr data) =>
+        {
+            uuid = devEvent.udidString;
+            switch (devEvent.@event)
+            {
+                case iDeviceEventType.DeviceAdd:
+                    Connect(uuid);
+                    // do whatever you want when connected.
+                    receiveDataFromDevice();
+                    sendToDevice(new byte[] { 0x10, 0x20, 0x33, 0x11 });
+                    break;
+                case iDeviceEventType.DeviceRemove:
+                    break;
+                default:
+                    return;
+            }
+        };
+    }
+
+    private void Connect(string newUdid)
+    {
+        iDeviceApi.idevice_new(out iDeviceHandle deviceHandle, newUdid).ThrowOnError();
+        var error = iDeviceApi.idevice_connect(deviceHandle, 5050, out iDeviceConnectionHandle connection);
+        if (error != iDeviceError.Success) return;
+        currentConnectionHandle = connection;
+    }
+
+    private void receiveDataFromDevice()
+    {
+        Task.Run(() =>
+        {
+            while (true)
+            {
+                uint receivedBytes = 0;
+                byte[] buffer = new byte[1024];
+                iDeviceApi.idevice_connection_receive(currentConnectionHandle, buffer, (uint)buffer.Length,
+                    ref receivedBytes);
+                if (receivedBytes <= 0) continue;
+                // Do something with your received bytes
+                Console.WriteLine("Received data from device...");
+                Console.WriteLine(buffer.ToString());
+            }
+        });
+    }
+
+    public void sendToDevice(byte[] dataToSend)
+    {
+        uint sentBytes = 0;
+        iDeviceApi.idevice_connection_send(currentConnectionHandle, dataToSend, (uint)dataToSend.Length, ref sentBytes);
+    }
 }
