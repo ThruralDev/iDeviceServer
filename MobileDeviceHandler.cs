@@ -1,0 +1,5 @@
+﻿
+interface MobileDeviceHandler
+{
+    void listDevices();
+}
